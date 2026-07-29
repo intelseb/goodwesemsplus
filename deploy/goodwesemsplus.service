@@ -1,0 +1,19 @@
+[Unit]
+Description=GoodWe SEMS+ to PVOutput poller
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=%h/goodwesemsplus
+Environment=NODE_ENV=production
+# Prefer an absolute node path if needed, e.g. /usr/bin/node or /usr/local/bin/npm
+ExecStart=/usr/bin/npm start
+Restart=on-failure
+RestartSec=30
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,127 @@
+# goodwesemsplus
+
+Polls GoodWe **SEMS+** plant data and uploads generation/consumption (and live voltage/temp when configured) to [PVOutput](https://pvoutput.org).
+
+## Requirements
+
+- Node.js 20+
+
+## Setup
+
+```bash
+cp .env.example .env
+# fill EMAIL, PASSWORD, STATION_DETAIL, PVOUTPUT_API, SERVER, etc.
+npm install
+npm run dev
+```
+
+Scripts: `npm run dev` (hot reload), `npm start`, `npm test`, `npm run format`, `npm run build`.
+
+## Environment
+
+| Variable                          | Description                                                                  |
+| --------------------------------- | ---------------------------------------------------------------------------- |
+| `SERVER`                          | SEMS+ login region (see table below)                                         |
+| `EMAIL` / `PASSWORD`              | SEMS+ account                                                                |
+| `STATION_DETAIL`                  | Base64 station blob from the station detail URL (see below)                  |
+| `INVERTER_SN_FOR_TEMP_MONITORING` | Optional inverter serial for live temp/voltage telemetry                     |
+| `PVOUTPUT_API`                    | PVOutput API key                                                             |
+| `PVOUTPUT_SYSTEM_ID`              | PVOutput system id                                                           |
+| `POLL_INTERVAL_MS`                | Poll interval (default `900000` = 15 min)                                    |
+| `BACKFILL_DAYS`                   | Days to backfill on startup (default `7`)                                    |
+| `TIMEZONE`                        | IANA timezone (optional; defaults by server)                                 |
+| `LOG_LEVEL`                       | `info` (default) / `debug` / `warn` / `error` — debug is cyan, info is green |
+
+Do not commit `.env`.
+
+### `STATION_DETAIL` example
+
+In the SEMS+ UI, open a station. The URL looks like:
+
+```text
+https://au-semsplus.goodwe.com/#/station_monitor/station_detail?eyJzdGF0aW9uSWQiOiJhMWIyYzNkNC1lNWY2LTc4OTAtYWJjZC1lZjEyMzQ1Njc4OTAiLCJzdGF0aW9uTmFtZSI6IkV4YW1wbGUgU29sYXIgSG9tZSIsInN0YXRpb25UeXBlIjoyLCJmcm9tTG9naW4iOnRydWV9
+```
+
+Copy the query string after `station_detail?` into `STATION_DETAIL`. That value is base64 JSON, for example:
+
+```text
+eyJzdGF0aW9uSWQiOiJhMWIyYzNkNC1lNWY2LTc4OTAtYWJjZC1lZjEyMzQ1Njc4OTAiLCJzdGF0aW9uTmFtZSI6IkV4YW1wbGUgU29sYXIgSG9tZSIsInN0YXRpb25UeXBlIjoyLCJmcm9tTG9naW4iOnRydWV9
+```
+
+Decoded shape:
+
+```json
+{
+  "stationId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "stationName": "Example Solar Home",
+  "stationType": 2,
+  "fromLogin": true
+}
+```
+
+(Use your real blob from the portal — the example above is fictional.)
+
+### Temperature / voltage
+
+Plant historical charts (`statisticsAndPreV2`) and live flow (`stations/flow`) expose **power / SOC only** for this station — not temp or voltage.
+
+When `INVERTER_SN_FOR_TEMP_MONITORING` is set, each live poll also calls equipment telemetry:
+
+`GET …/sems-plant/api/equipments/{sn}/telemetry`
+
+From that payload:
+
+- **Temperature** (`system` / chamber temp) → PVOutput `v5`
+- **Vac** (AC voltage) → PVOutput `v6`
+
+Historical / batch uploads **do not** send temp or voltage (so PVOutput does not store `-1` for those fields). Temp and voltage are live-only.
+
+## Valid `SERVER` values
+
+Matches the SEMS+ login server dropdown (`config.js` `serverConfig`):
+
+| Login label   | Code | SEMS+ web                        | Default gateway                                                |
+| ------------- | ---- | -------------------------------- | -------------------------------------------------------------- |
+| China         | `cn` | `https://cn-semsplus.goodwe.com` | login `api`, else `https://cn-gateway.semsportal.com/web/sems` |
+| Australia     | `au` | `https://au-semsplus.goodwe.com` | `https://au-gateway.semsportal.com/web/sems`                   |
+| International | `hk` | `https://hk-semsplus.goodwe.com` | `https://hk-gateway.semsportal.com/web/sems`                   |
+| Europe        | `eu` | `https://eu-semsplus.goodwe.com` | `https://eu-gateway.semsportal.com/web/sems`                   |
+| Americas      | `us` | `https://us-semsplus.goodwe.com` | `https://us-gateway.semsportal.com/web/sems`                   |
+
+Accepts the label (`Australia`) or code (`au`).
+
+Login API (same as the browser for Australia):
+
+`POST https://au-semsplus.goodwe.com/web/sems/sems-user/api/v1/auth/cross-login`
+
+([semsplus.goodwe.com/#/login](https://semsplus.goodwe.com/#/login) is the front door; selecting Australia uses the `au-semsplus` host above.)
+
+## Behaviour
+
+1. SEMS+ `cross-login` with `semsPlusWeb` + `X-Signature`
+2. Backfill last `BACKFILL_DAYS` via `statisticsAndPreV2` → PVOutput `addbatchstatus` (up to 30 statuses per request; [API docs](https://www.pvoutput.org/help/api_specification.html))
+3. Every poll: today's historical series + live `stations/flow` (and optional inverter telemetry for temp/voltage) → batch/status uploads
+
+Historical points are downsampled to **15 minutes** and batch requests are spaced (~65s) to stay near the free-tier **60 requests/hour** limit. If PVOutput returns `403 Exceeded 60 requests per hour`, the app logs a warning, pauses that upload stream, and continues running — remaining points retry on later polls.
+
+Past calendar days that finish uploading are recorded in `.data/upload-state.json`. On the next start, those days are skipped; only **today** (historical catch-up) and **live** flow are fetched each poll. Incomplete past days may be cached under `.data/pending/` so SEMS is not re-queried.
+
+Uses SEMS+ gateway APIs only (not legacy `www.semsportal.com` monitor APIs).
+
+## Run with systemd (root / system service)
+
+Runs as root. App path is `%h/goodwesemsplus` (root’s home → `/root/goodwesemsplus` on a typical Pi).
+
+Config comes from **`/root/goodwesemsplus/.env`** (same file as local). The unit only sets `NODE_ENV=production`; it does not define SEMS/PVOutput secrets — copy `.env` into the app directory on the host before enabling the service.
+
+1. Put the app at `~/goodwesemsplus` as root, install deps, place `.env`, and confirm `npm start` works there.
+2. Install the unit:
+
+```bash
+sudo cp deploy/goodwesemsplus.service /etc/systemd/system/goodwesemsplus.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now goodwesemsplus.service
+sudo systemctl status goodwesemsplus.service
+```
+
+Useful: `sudo systemctl restart goodwesemsplus`, `sudo systemctl stop goodwesemsplus`, `journalctl -u goodwesemsplus -f`.
