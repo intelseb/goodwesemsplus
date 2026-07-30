@@ -4,14 +4,24 @@ Polls GoodWe **SEMS+** plant data and uploads generation/consumption (and live v
 
 ## Requirements
 
-- Node.js 20+
+- Node.js 20+ (includes `npm`)
 
 ## Setup
+
+1. Install Node.js 20+ if needed ([nodejs.org](https://nodejs.org/) or your OS package manager, e.g. `sudo apt install nodejs npm` on Debian/Raspberry Pi OS — check the version is 20+).
+2. Clone the repo and install packages:
+
+```bash
+git clone https://github.com/intelseb/goodwesemsplus.git goodwesemsplus
+cd goodwesemsplus
+npm install
+```
+
+3. Configure env and run:
 
 ```bash
 cp .env.example .env
 # fill EMAIL, PASSWORD, STATION_DETAIL, PVOUTPUT_API, SERVER, etc.
-npm install
 npm run dev
 ```
 
@@ -114,8 +124,18 @@ Runs as root. App path is `%h/goodwesemsplus` (root’s home → `/root/goodwese
 
 Config comes from **`/root/goodwesemsplus/.env`** (same file as local). The unit only sets `NODE_ENV=production`; it does not define SEMS/PVOutput secrets — copy `.env` into the app directory on the host before enabling the service.
 
-1. Put the app at `~/goodwesemsplus` as root, install deps, place `.env`, and confirm `npm start` works there.
-2. Install the unit:
+1. Install Node.js 20+ on the host (see Setup).
+2. As root, clone (or copy) the app to `~/goodwesemsplus`, then install packages and configure:
+
+```bash
+cd ~/goodwesemsplus
+npm install
+cp .env.example .env
+# fill EMAIL, PASSWORD, STATION_DETAIL, PVOUTPUT_API, SERVER, etc.
+npm start   # confirm it runs before enabling systemd
+```
+
+3. Install the unit:
 
 ```bash
 sudo cp deploy/goodwesemsplus.service /etc/systemd/system/goodwesemsplus.service
@@ -124,4 +144,13 @@ sudo systemctl enable --now goodwesemsplus.service
 sudo systemctl status goodwesemsplus.service
 ```
 
-Useful: `sudo systemctl restart goodwesemsplus`, `sudo systemctl stop goodwesemsplus`, `journalctl -u goodwesemsplus -f`.
+Useful commands:
+
+| Command | Description |
+| --- | --- |
+| `sudo systemctl status goodwesemsplus` | Show whether the service is running and recent log lines |
+| `sudo systemctl restart goodwesemsplus` | Restart the poller (e.g. after editing `.env`) |
+| `sudo systemctl stop goodwesemsplus` | Stop the service |
+| `sudo systemctl start goodwesemsplus` | Start the service |
+| `journalctl -u goodwesemsplus -f` | Follow live logs |
+| `journalctl -u goodwesemsplus -n 100` | Show the last 100 log lines |
