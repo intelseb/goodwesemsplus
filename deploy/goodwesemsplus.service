@@ -8,9 +8,9 @@ StartLimitBurst=5
 [Service]
 Type=simple
 User=root
-WorkingDirectory=%h/goodwesemsplus
+WorkingDirectory=/root/goodwesemsplus
 Environment=NODE_ENV=production
-# Prefer an absolute node path if needed, e.g. /usr/bin/node or /usr/local/bin/npm
+# If `which npm` is not /usr/bin/npm, change ExecStart to that path.
 ExecStart=/usr/bin/npm start
 Restart=on-failure
 RestartSec=30

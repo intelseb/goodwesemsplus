@@ -120,15 +120,16 @@ Uses SEMS+ gateway APIs only (not legacy `www.semsportal.com` monitor APIs).
 
 ## Run with systemd (root / system service)
 
-Runs as root. App path is `%h/goodwesemsplus` (root’s home → `/root/goodwesemsplus` on a typical Pi).
+Runs as `User=root`. The unit’s `WorkingDirectory` is **`/root/goodwesemsplus`** — clone/install the app there; if that directory is missing, systemd fails with `Failed at step CHDIR`.
 
-Config comes from **`/root/goodwesemsplus/.env`** (same file as local). The unit only sets `NODE_ENV=production`; it does not define SEMS/PVOutput secrets — copy `.env` into the app directory on the host before enabling the service.
+Config comes from **`/root/goodwesemsplus/.env`**. The unit only sets `NODE_ENV=production`; it does not define SEMS/PVOutput secrets.
 
-1. Install Node.js 20+ on the host (see Setup).
-2. As root, clone (or copy) the app to `~/goodwesemsplus`, then install packages and configure:
+1. Install Node.js 20+ on the host (see Setup). Confirm `which npm` (default unit expects `/usr/bin/npm`).
+2. As root, clone into `/root/goodwesemsplus`, install packages, and configure:
 
 ```bash
-cd ~/goodwesemsplus
+git clone https://github.com/intelseb/goodwesemsplus.git /root/goodwesemsplus
+cd /root/goodwesemsplus
 npm install
 cp .env.example .env
 # fill EMAIL, PASSWORD, STATION_DETAIL, PVOUTPUT_API, SERVER, etc.
@@ -138,7 +139,7 @@ npm start   # confirm it runs before enabling systemd
 3. Install the unit:
 
 ```bash
-sudo cp deploy/goodwesemsplus.service /etc/systemd/system/goodwesemsplus.service
+sudo cp /root/goodwesemsplus/deploy/goodwesemsplus.service /etc/systemd/system/goodwesemsplus.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now goodwesemsplus.service
 sudo systemctl status goodwesemsplus.service
