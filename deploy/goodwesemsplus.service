@@ -2,6 +2,8 @@
 Description=GoodWe SEMS+ to PVOutput poller
 After=network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -12,8 +14,6 @@ Environment=NODE_ENV=production
 ExecStart=/usr/bin/npm start
 Restart=on-failure
 RestartSec=30
-StartLimitIntervalSec=300
-StartLimitBurst=5
 
 [Install]
 WantedBy=multi-user.target
