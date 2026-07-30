@@ -69,21 +69,23 @@ export function parseEquipmentTelemetry(json: unknown): EquipmentTelemetry {
 
 export async function fetchEquipmentTelemetry(
   client: SemsClient,
-  options: { inverterSn: string; stationId: string },
+  options: { deviceSn: string; deviceType?: string; stationId: string },
 ): Promise<EquipmentTelemetry> {
+  const deviceType = options.deviceType || DEFAULT_DEVICE_TYPE;
   const json = await client.request(
     "GET",
-    `/sems-plant/api/equipments/${encodeURIComponent(options.inverterSn)}/telemetry`,
+    `/sems-plant/api/equipments/${encodeURIComponent(options.deviceSn)}/telemetry`,
     {
       query: {
-        deviceType: DEFAULT_DEVICE_TYPE,
+        deviceType,
         pwId: options.stationId,
       },
     },
   );
   const parsed = parseEquipmentTelemetry(json);
   log.debug("Equipment telemetry parsed", {
-    inverterSn: options.inverterSn,
+    deviceSn: options.deviceSn,
+    deviceType,
     tempC: parsed.tempC,
     voltageV: parsed.voltageV,
   });

@@ -57,6 +57,8 @@ export class PvOutputClient {
       v2: status.v2,
       v3: status.v3,
       v4: status.v4,
+      v5: status.v5,
+      v6: status.v6,
     });
 
     try {

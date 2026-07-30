@@ -116,25 +116,17 @@ async function uploadPastDay(
 
 async function pollOnce(sems: SemsClient, pv: PvOutputClient, config: AppConfig): Promise<void> {
   log.debug("Poll tick start");
-  try {
-    await uploadDay(sems, pv, config, 0);
-  } catch (error) {
-    if (error instanceof PvOutputRateLimitError) {
-      log.warn("Today upload deferred due to PVOutput rate limit", { waitMs: error.waitMs });
-    } else {
-      log.error("Today historical upload failed", {
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
 
+  // Live first (with inverter temp/voltage) so it isn't skipped after today's
+  // historical batch marks the same HH:mm as already uploaded.
   try {
     const flow = await fetchLiveFlow(sems, config.station.stationId);
-    if (config.inverterSn) {
+    if (config.device) {
       try {
         const telemetry = await fetchEquipmentTelemetry(sems, {
-          inverterSn: config.inverterSn,
-          stationId: config.station.stationId,
+          deviceSn: config.device.deviceSn,
+          deviceType: config.device.deviceType,
+          stationId: config.device.stationId || config.station.stationId,
         });
         if (telemetry.tempC !== undefined) flow.temp = telemetry.tempC;
         if (telemetry.voltageV !== undefined) flow.voltage = telemetry.voltageV;
@@ -143,6 +135,8 @@ async function pollOnce(sems: SemsClient, pv: PvOutputClient, config: AppConfig)
           error: error instanceof Error ? error.message : String(error),
         });
       }
+    } else {
+      log.debug("No DEVICE_DETAIL — live upload without temp/voltage");
     }
     const live = mapLiveFlow(flow, config.timeZone);
     if (live) {
@@ -160,6 +154,8 @@ async function pollOnce(sems: SemsClient, pv: PvOutputClient, config: AppConfig)
         log.warn("Live upload deferred (already sent or rate limited)", {
           date: live.date,
           time: live.time,
+          v5: live.v5,
+          v6: live.v6,
         });
       }
     } else {
@@ -169,6 +165,18 @@ async function pollOnce(sems: SemsClient, pv: PvOutputClient, config: AppConfig)
     log.error("Live poll failed", {
       error: error instanceof Error ? error.message : String(error),
     });
+  }
+
+  try {
+    await uploadDay(sems, pv, config, 0);
+  } catch (error) {
+    if (error instanceof PvOutputRateLimitError) {
+      log.warn("Today upload deferred due to PVOutput rate limit", { waitMs: error.waitMs });
+    } else {
+      log.error("Today historical upload failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
   log.debug("Poll tick done");
 }
@@ -243,7 +251,8 @@ async function main(): Promise<void> {
     server: config.region.label,
     stationId: config.station.stationId,
     stationName: config.station.stationName,
-    inverterSn: config.inverterSn,
+    deviceSn: config.device?.deviceSn,
+    deviceType: config.device?.deviceType,
     timeZone: config.timeZone,
     pollIntervalMs: config.pollIntervalMs,
     backfillDays: config.backfillDays,

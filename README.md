@@ -21,7 +21,7 @@ npm install
 
 ```bash
 cp .env.example .env
-# fill EMAIL, PASSWORD, STATION_DETAIL, PVOUTPUT_API, SERVER, etc.
+# fill EMAIL, PASSWORD, STATION_DETAIL, DEVICE_DETAIL, PVOUTPUT_API, SERVER, etc.
 npm run dev
 ```
 
@@ -29,18 +29,18 @@ Scripts: `npm run dev` (hot reload), `npm start`, `npm test`, `npm run format`, 
 
 ## Environment
 
-| Variable                          | Description                                                                  |
-| --------------------------------- | ---------------------------------------------------------------------------- |
-| `SERVER`                          | SEMS+ login region (see table below)                                         |
-| `EMAIL` / `PASSWORD`              | SEMS+ account                                                                |
-| `STATION_DETAIL`                  | Base64 station blob from the station detail URL (see below)                  |
-| `INVERTER_SN_FOR_TEMP_MONITORING` | Optional inverter serial for live temp/voltage telemetry                     |
-| `PVOUTPUT_API`                    | PVOutput API key                                                             |
-| `PVOUTPUT_SYSTEM_ID`              | PVOutput system id                                                           |
-| `POLL_INTERVAL_MS`                | Poll interval (default `900000` = 15 min)                                    |
-| `BACKFILL_DAYS`                   | Days to backfill on startup (default `7`)                                    |
-| `TIMEZONE`                        | IANA timezone (optional; defaults by server)                                 |
-| `LOG_LEVEL`                       | `info` (default) / `debug` / `warn` / `error` — debug is cyan, info is green |
+| Variable             | Description                                                                  |
+| -------------------- | ---------------------------------------------------------------------------- |
+| `SERVER`             | SEMS+ login region (see table below)                                         |
+| `EMAIL` / `PASSWORD` | SEMS+ account                                                                |
+| `STATION_DETAIL`     | Base64 station blob from the station detail URL (see below)                  |
+| `DEVICE_DETAIL`      | Optional base64 device blob from the device detail URL (live temp/voltage)   |
+| `PVOUTPUT_API`       | PVOutput API key                                                             |
+| `PVOUTPUT_SYSTEM_ID` | PVOutput system id                                                           |
+| `POLL_INTERVAL_MS`   | Poll interval (default `900000` = 15 min)                                    |
+| `BACKFILL_DAYS`      | Days to backfill on startup (default `7`)                                    |
+| `TIMEZONE`           | IANA timezone (optional; defaults by server)                                 |
+| `LOG_LEVEL`          | `info` (default) / `debug` / `warn` / `error` — debug is cyan, info is green |
 
 Do not commit `.env`.
 
@@ -75,9 +75,9 @@ Decoded shape:
 
 Plant historical charts (`statisticsAndPreV2`) and live flow (`stations/flow`) expose **power / SOC only** for this station — not temp or voltage.
 
-When `INVERTER_SN_FOR_TEMP_MONITORING` is set, each live poll also calls equipment telemetry:
+When `DEVICE_DETAIL` is set, each live poll also calls equipment telemetry using `deviceSn` / `deviceType` from that blob:
 
-`GET …/sems-plant/api/equipments/{sn}/telemetry`
+`GET …/sems-plant/api/equipments/{deviceSn}/telemetry?deviceType=…&pwId=…`
 
 From that payload:
 
@@ -85,6 +85,29 @@ From that payload:
 - **Vac** (AC voltage) → PVOutput `v6`
 
 Historical / batch uploads **do not** send temp or voltage (so PVOutput does not store `-1` for those fields). Temp and voltage are live-only.
+
+### `DEVICE_DETAIL` example
+
+In SEMS+, open a device under the station. The URL looks like:
+
+```text
+https://au-semsplus.goodwe.com/#/station_monitor/station_detail/device_detail?eyJzdGF0aW9uSWQiOiJhMWIyYzNkNC1lNWY2LTc4OTAtYWJjZC1lZjEyMzQ1Njc4OTAiLCJzdGF0aW9uTmFtZSI6IkV4YW1wbGUgU29sYXIgSG9tZSIsImRldmljZVNuIjoiRVhBTVBMRVNOMTIzNDU2IiwiZGV2aWNlVHlwZSI6IkVORVJHWV9TVE9SQUdFX0lOVEVHUkFURURfQ0FCSU5FVCIsInRpbWVzcGFuIjotOCwic3VidHlwZSI6IlJFU0lERU5USUFMIn0=
+```
+
+Copy the query string after `device_detail?` into `DEVICE_DETAIL`. Decoded shape:
+
+```json
+{
+  "stationId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "stationName": "Example Solar Home",
+  "deviceSn": "EXAMPLESN123456",
+  "deviceType": "ENERGY_STORAGE_INTEGRATED_CABINET",
+  "timespan": -8,
+  "subtype": "RESIDENTIAL"
+}
+```
+
+(Use your real blob from the portal — the example above is fictional.)
 
 ## Valid `SERVER` values
 
@@ -110,7 +133,7 @@ Login API (same as the browser for Australia):
 
 1. SEMS+ `cross-login` with `semsPlusWeb` + `X-Signature`
 2. Backfill last `BACKFILL_DAYS` via `statisticsAndPreV2` → PVOutput `addbatchstatus` (up to 30 statuses per request; [API docs](https://www.pvoutput.org/help/api_specification.html))
-3. Every poll: today's historical series + live `stations/flow` (and optional inverter telemetry for temp/voltage) → batch/status uploads
+3. Every poll: live `stations/flow` + optional inverter telemetry (temp/voltage) first, then today's historical series → status/batch uploads
 
 Historical points are downsampled to **15 minutes** and batch requests are spaced (~65s) to stay near the free-tier **60 requests/hour** limit. If PVOutput returns `403 Exceeded 60 requests per hour`, the app logs a warning, pauses that upload stream, and continues running — remaining points retry on later polls.
 
@@ -132,7 +155,7 @@ git clone https://github.com/intelseb/goodwesemsplus.git /root/goodwesemsplus
 cd /root/goodwesemsplus
 npm install
 cp .env.example .env
-# fill EMAIL, PASSWORD, STATION_DETAIL, PVOUTPUT_API, SERVER, etc.
+# fill EMAIL, PASSWORD, STATION_DETAIL, DEVICE_DETAIL, PVOUTPUT_API, SERVER, etc.
 npm start   # confirm it runs before enabling systemd
 ```
 
@@ -147,11 +170,11 @@ sudo systemctl status goodwesemsplus.service
 
 Useful commands:
 
-| Command | Description |
-| --- | --- |
-| `sudo systemctl status goodwesemsplus` | Show whether the service is running and recent log lines |
-| `sudo systemctl restart goodwesemsplus` | Restart the poller (e.g. after editing `.env`) |
-| `sudo systemctl stop goodwesemsplus` | Stop the service |
-| `sudo systemctl start goodwesemsplus` | Start the service |
-| `journalctl -u goodwesemsplus -f` | Follow live logs |
-| `journalctl -u goodwesemsplus -n 100` | Show the last 100 log lines |
+| Command                                 | Description                                              |
+| --------------------------------------- | -------------------------------------------------------- |
+| `sudo systemctl status goodwesemsplus`  | Show whether the service is running and recent log lines |
+| `sudo systemctl restart goodwesemsplus` | Restart the poller (e.g. after editing `.env`)           |
+| `sudo systemctl stop goodwesemsplus`    | Stop the service                                         |
+| `sudo systemctl start goodwesemsplus`   | Start the service                                        |
+| `journalctl -u goodwesemsplus -f`       | Follow live logs                                         |
+| `journalctl -u goodwesemsplus -n 100`   | Show the last 100 log lines                              |

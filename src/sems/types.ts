@@ -17,6 +17,16 @@ export type StationDetail = {
   fromLogin?: boolean;
 };
 
+/** From SEMS+ device_detail URL query (base64 JSON). */
+export type DeviceDetail = {
+  stationId: string;
+  deviceSn: string;
+  deviceType: string;
+  stationName?: string;
+  timespan?: number;
+  subtype?: string;
+};
+
 export type PvStatus = {
   date: string;
   time: string;
